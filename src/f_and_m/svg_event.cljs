@@ -34,4 +34,5 @@
     (aset pt "x" x)
     (aset pt "y" y)
     (reset! svg-point (.matrixTransform pt matrix))
+    #_(prn (.-x  pt) (.-y pt))
     [(.-x @svg-point) (.-y @svg-point)]))
