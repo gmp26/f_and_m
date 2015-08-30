@@ -22,25 +22,24 @@
 (def initial-lefts (vec (for [n (range 1 (inc max-n))] n))) ;; initial content of the left panel
 (def initial-rights (vec (for [n (range 1 (inc max-n))] nil))) ;; initial content of the left panel
 
-
 (def gap 20)
 (def dot-radius 10)
-(def click-interval 333)
+(def click-interval 1000)
 
 ;;;
 ;; unit conversions
 ;;;
 (defn gridx->svgx [side x]
   (condp = side
-    :left (* (+ x 0.5) dot-radius 2)
-    :right (* (+ x cols 1) dot-radius 2)))
+    :lefts (* (+ x 0.5) dot-radius 2)
+    :rights (* (+ x cols 1) dot-radius 2)))
 (defn gridy->svgy [y] (* (+ y 0.5) dot-radius 2))
 
 (defn svgx->gridx [x]
   (let [x' (/ x 2 dot-radius)]
     (if (<= x' 10)
-      [:left (- x' 0.5)]
-      [:right (- x' cols 1)])))      ; inverse gridx->svgx
+      [:lefts (- x' 0.5)]
+      [:rights (- x' cols 1)])))      ; inverse gridx->svgx
 
 (defn svgy->gridy [y]
   (let [y' (/ y 2 dot-radius)]
@@ -53,7 +52,7 @@
         y' (svgy->gridy y)]
     [side [x' y']]))
 
-(def viewport-width (gridx->svgx :right (+ cols 0.5)))
+(def viewport-width (gridx->svgx :rights (+ cols 0.5)))
 (def viewport-height (gridy->svgy (+ rows 0.5)))
 
 ;;;
@@ -94,10 +93,10 @@
   (nth content (xy->index x y))
   )
 
-(def dot-fills {:left {:present "rgba(255,100,130,1)"
+(def dot-fills {:lefts {:present "rgba(255,100,130,1)"
                        :absent "rgba(255,100,100,0)";"rgba(160,170,200,1)"
                        :active  "rgba(255,100,130,1)"}
-                :right {:present "rgba(59, 83, 254, 1)" ;"rgba(255,100,130,1)";"#3B53FE" ;
+                :rights {:present "rgba(59, 83, 254, 1)" ;"rgba(255,100,130,1)";"#3B53FE" ;
                         :chain-start "rgba(70,170,40,1)"
                         :chained "rgba(80,180,80,0.7)"
                         :absent "rgba(160,160,255,0)"
@@ -111,9 +110,8 @@
 
 (defn chained?
   "determine whether a dot is in a factor/multiple chain"
-  [content x y]
-  (let [index (xy->index x y)
-        number (nth content index)
+  [content index]
+  (let [number (nth content index)
         prior (when (> index 0) (nth content (- index 1)))
         next (when (< index max-n) (nth content (inc index)))]
     (or (and prior (f-or-m? prior number))
@@ -121,9 +119,8 @@
 
 (defn chain-start?
   "first item of a chain?"
-  [content x y]
-  (let [index (xy->index x y)
-        number (nth content index)
+  [content index]
+  (let [number (nth content index)
         prior (when (> index 0) (nth content (- index 1)))
         next (when (< index max-n) (nth content (inc index)))]
     (and (or (not  prior) (not (f-or-m? prior number)))
@@ -140,21 +137,8 @@
   [content]
   (first (reduce chain-length [0 0 1] content))  )
 
-(defn dot-fill
-  "dot fill"
-  [side content x y]
-  (if (cell-content content x y)
-    (if (= side :left)
-      (get-in dot-fills [side :present])
-      (if (chained? content x y)
-        (if (chain-start? content x y)
-          (get-in dot-fills [side :chain-start])
-          (get-in dot-fills [side :chained]))
-        (get-in dot-fills [side :present])))
-    (get-in dot-fills [side :absent])))
-
 (defn available-rights
-  "return a seq of empty cells in the right grid"
+  "return a seq of empty cells in the :rights grid"
   []
   (keep-indexed #(if (nil? %2) %1) (:rights @game)))
 
@@ -166,7 +150,7 @@
   [[side [x y :as dot]]]
   (when dot
     (let [index (xy->index x y)]
-      (if (= side :left)
+      (if (= side :lefts)
         (let [number (nth (:lefts @game) index)]
           (when number
             #_(prn (str "click-on " side [x y]))
@@ -190,44 +174,67 @@
   [[side [x y] :as start] [side' [x' y'] :as end]]
   (when (and start end)
     (prn (str "commit drag " side " " [x y] " -> " side' " " [x' y']))
-    (when (= side' :right)
-      (let [content' (side' @game)
-            source (xy->index x y)
-            target (xy->index x y)
-            shift (must-shift content' target)
-            rights (concat
-                    (subvec content' 0 target)
-                    [(cell-content content' x y)]
-                    shift
-                    (subvec content' (+ target 1 (count shift)))) ]
-        (swap! game #(assoc % side' rights)))
+    (when (= side side' :rights)
+      (let [content (side @game)
+            source-index (xy->index x y)
+            source-number (nth content source-index)
+            target-index (xy->index x' y')
+            target-number (nth content target-index)
+            ]
+        (when source-number
+          (if target-number
+            (swap! game #(-> %
+                             (assoc-in [:rights (first (available-rights))] target-number)
+                             (assoc-in [:rights target-index] source-number)
+                             (assoc-in [:rights source-index] nil)))
+            (swap! game #(-> %
+                             (assoc-in [:rights target-index] source-number)
+                             (assoc-in [:rights source-index] nil)))
+            )
+
+          )
+        )
       ))
   )
 
 ;;;;;;;;;
 
-(r/defc cell [side-key content x y xy-fill]
+
+(r/defc cell < r/cursored r/cursored-watch [game side-key x y]
   (let [[x' y'] [(gridx->svgx side-key x) (gridy->svgy y)]
-           number (cell-content content x y)
-           dx (if (< number 10) -3.5 (if (< number 100) -6.5 -10.5))
-           dy 4.5]
-       [:g {:key [x y]
-            :transform (str "translate(" x' "," y' ")")}
-        [:circle {:cx 0
-                  :cy 0
-                  :r dot-radius
-                  :fill (xy-fill x y)
-                  :key "lc"
-                  }]
-        [:text {:x dx
-                :y dy
-                :fill "#ffffff"
-                :font-size 12
-                :key :lt}
-         (cell-content content x y)]]))
+        index (xy->index x y)
+        number @(r/cursor game [side-key index])]
+    (if number
+      (let [content @(r/cursor game [side-key])
+            dx (if (< number 10) -3.5 (if (< number 100) -6.5 -10.5))
+            dy 4.5
+            fill (if (= side-key :lefts)
+                   (get-in dot-fills [side-key :present])
+                   (if (chained? content index)
+                     (if (chain-start? content index)
+                       (get-in dot-fills [side-key :chain-start])
+                       (get-in dot-fills [side-key :chained]))
+                     (get-in dot-fills [side-key :present])))
+            ]
+
+        [:g {:key [x y]
+             :transform (str "translate(" x' "," y' ")")}
+         [:circle {:cx 0
+                   :cy 0
+                   :r dot-radius
+                   :fill fill
+                   :key :lc
+                   }]
+         [:text {:x dx
+                 :y dy
+                 :fill "#ffffff"
+                 :font-size 12
+                 :key :lt}
+          number]]))))
+
 
 (r/defc grid
-  [side-key content background-fill x0 xy-fill]
+  [side-key background-fill x0]
   [:g {:style {:cursor "pointer"}}
    [:rect {:x (gridy->svgy x0)
            :y (gridy->svgy -0.5)
@@ -238,22 +245,20 @@
            }]
    (for [y (range 0 rows)
          x (range 0 cols)]
-     (-> (cell side-key content x y xy-fill)
+     (-> (cell game side-key x y)
          (r/with-key [x y])))])
 
 (r/defc left-grid [lefts]
   (grid
-   :left lefts
+   :lefts
    "rgba(255,100,100,0.3)"
-   -0.5
-   (fn [x y] (dot-fill :left lefts x y))))
+   -0.5))
 
 (r/defc right-grid [rights]
   (grid
-   :right rights
+   :rights
    "rgba(100,170,100,0.2)"
-   10
-   (fn [x y] (dot-fill :right rights x y))))
+   10))
 
 ;;;
 ;; gestures
@@ -312,33 +317,38 @@
       (r/with-key (right-grid (:rights g)) "right")])
    ])
 
+
 (r/defc debug < r/reactive []
   (let [g (r/react game)]
     [:div
-     [:p (str "lefts " (:lefts g))]
-     [:p (str "rights " (:rights g))]]))
+     [:p {:key 1} (str "lefts " (:lefts g))]
+     [:p {:key 2} (str "rights " (:rights g))]]))
 
 ;;;
 ;; Put the app/game in here
 ;;;
-(r/defc game-container < r/reactive []
+(r/defc game-container < r/reactive [game]
   [:div {:class "panel panel-default" :style {:margin "2px"}}
    [:div {:class "panel-heading"}
     [:h3 {:class "panel-title"} "Factors and Multiples"
      [:span {:style {:float "right"}}
       "Longest Chain "
-      (str (longest-chain (:rights (r/react game))))]]]
+      (str (longest-chain @(r/cursor game [:rights])))]]]
    [:div {:class "panel-body"}
-    [:p "Click on a number to move it between the left and right squares. Numbers in the right grid can be dragged to reorder them.
-Aim to make the longest possible chain where each number is a factor or a multiple of its predecessor. Each number may be used once only. Valid chains are coloured green. The first number in a chain is dark green."]
+    [:p "Click on a number to move it between the left and right squares.
+Numbers in the right grid can be dragged to reorder them.
+Aim to make the longest possible chain where each number is a factor or a multiple of its predecessor.
+Each number may be used once only.
+Valid chains are coloured green.
+The first number in a chain is dark green."]
     (svg-panel)
-    #_(debug)]])
+    (debug)]])
 
 
 ;;;
 ;; mount main component on html game element
 ;;;
-(r/mount (game-container) (el "game"))
+(r/mount (game-container game) (el "game"))
 
 
 ;;
