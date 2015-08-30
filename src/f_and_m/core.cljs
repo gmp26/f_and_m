@@ -40,7 +40,7 @@
   (let [x' (/ x 2 dot-radius)]
     (if (<= x' 10)
       [:left (- x' 0.5)]
-      [:right (- x' cols 0.5)])))      ; inverse gridx->svgx
+      [:right (- x' cols 1)])))      ; inverse gridx->svgx
 
 (defn svgy->gridy [y]
   (let [y' (/ y 2 dot-radius)]
@@ -93,19 +93,64 @@
   [content x y]
   (nth content (xy->index x y))
   )
+
 (def dot-fills {:left {:present "rgba(255,100,130,1)"
-                       :absent "rgba(160,170,200,1)"
+                       :absent "rgba(255,100,100,0)";"rgba(160,170,200,1)"
                        :active  "rgba(255,100,130,1)"}
-                :right {:present "#3B53FE" ;"rgba(255,100,130,1)"
-                        :chained "rgba(80,220,80,1)"
-                        :absent "rgba(160,160,255,0.5)"
+                :right {:present "rgba(59, 83, 254, 1)" ;"rgba(255,100,130,1)";"#3B53FE" ;
+                        :chain-start "rgba(70,170,40,1)"
+                        :chained "rgba(80,180,80,0.7)"
+                        :absent "rgba(160,160,255,0)"
                         :displaced "rgba(255,100,130,0.7)"}})
+
+(defn f-or-m?
+  "are m and n fctors or multiples of eah other"
+  [m n]
+  (and m n (= 0 (* (mod m n) (mod n m))))
+  )
+
+(defn chained?
+  "determine whether a dot is in a factor/multiple chain"
+  [content x y]
+  (let [index (xy->index x y)
+        number (nth content index)
+        prior (when (> index 0) (nth content (- index 1)))
+        next (when (< index max-n) (nth content (inc index)))]
+    (or (and prior (f-or-m? prior number))
+        (and next (f-or-m? number next)))))
+
+(defn chain-start?
+  "first item of a chain?"
+  [content x y]
+  (let [index (xy->index x y)
+        number (nth content index)
+        prior (when (> index 0) (nth content (- index 1)))
+        next (when (< index max-n) (nth content (inc index)))]
+    (and (or (not  prior) (not (f-or-m? prior number)))
+        (and next (f-or-m? number next)))))
+
+(defn chain-length
+  "find the length of a f_or_m chain from given index"
+  [[longest len m] n]
+  #_(prn (str "longest " longest " len " len " m " m " n " n))
+  (if (f-or-m? m n) [(max longest (inc len)) (inc len) n] [longest 0 n]))
+
+(defn longest-chain
+  "calculate the length of the longest f-or-m chain"
+  [content]
+  (first (reduce chain-length [0 0 1] content))  )
 
 (defn dot-fill
   "dot fill"
   [side content x y]
   (if (cell-content content x y)
-    (get-in dot-fills [side :present])
+    (if (= side :left)
+      (get-in dot-fills [side :present])
+      (if (chained? content x y)
+        (if (chain-start? content x y)
+          (get-in dot-fills [side :chain-start])
+          (get-in dot-fills [side :chained]))
+        (get-in dot-fills [side :present])))
     (get-in dot-fills [side :absent])))
 
 (defn available-rights
@@ -120,26 +165,69 @@
   "click on a dot"
   [[side [x y :as dot]]]
   (when dot
-    (when (= side :left)
-      (let [index (xy->index x y)
-            number (nth (:lefts @game) index)]
-        (when number
-          (prn (str "click-on " side [x y]))
-          (swap! game #(-> %
-                           (assoc-in [:lefts index] nil)
-                           (assoc-in [:rights (first (available-rights))] number))))))))
+    (let [index (xy->index x y)]
+      (if (= side :left)
+        (let [number (nth (:lefts @game) index)]
+          (when number
+            #_(prn (str "click-on " side [x y]))
+            (swap! game #(-> %
+                             (assoc-in [:lefts index] nil)
+                             (assoc-in [:rights (first (available-rights))] number)))))
+        (let [number (nth (:rights @game) index)]
+          (when number
+            #_(prn (str "click-on " side [x y]))
+            (swap! game #(-> %
+                             (assoc-in [:lefts (- number 1)] number)
+                             (assoc-in [:rights index] nil)))))))))
+
+(defn must-shift
+  [content target]
+  (take-while (complement nil?) (subvec (:rights @game) target)
+   ))
 
 (defn commit-drag
   "commit a drag"
-  [start-dot end-dot]
-  (when end-dot
-    (prn (str "commit drag " start-dot " -> " end-dot)))
+  [[side [x y] :as start] [side' [x' y'] :as end]]
+  (when (and start end)
+    (prn (str "commit drag " side " " [x y] " -> " side' " " [x' y']))
+    (when (= side' :right)
+      (let [content' (side' @game)
+            source (xy->index x y)
+            target (xy->index x y)
+            shift (must-shift content' target)
+            rights (concat
+                    (subvec content' 0 target)
+                    [(cell-content content' x y)]
+                    shift
+                    (subvec content' (+ target 1 (count shift)))) ]
+        (swap! game #(assoc % side' rights)))
+      ))
   )
 
 ;;;;;;;;;
 
+(r/defc cell [side-key content x y xy-fill]
+  (let [[x' y'] [(gridx->svgx side-key x) (gridy->svgy y)]
+           number (cell-content content x y)
+           dx (if (< number 10) -3.5 (if (< number 100) -6.5 -10.5))
+           dy 4.5]
+       [:g {:key [x y]
+            :transform (str "translate(" x' "," y' ")")}
+        [:circle {:cx 0
+                  :cy 0
+                  :r dot-radius
+                  :fill (xy-fill x y)
+                  :key "lc"
+                  }]
+        [:text {:x dx
+                :y dy
+                :fill "#ffffff"
+                :font-size 12
+                :key :lt}
+         (cell-content content x y)]]))
+
 (r/defc grid
-  [side-key content background-fill x0 nth-fill]
+  [side-key content background-fill x0 xy-fill]
   [:g {:style {:cursor "pointer"}}
    [:rect {:x (gridy->svgy x0)
            :y (gridy->svgy -0.5)
@@ -150,39 +238,22 @@
            }]
    (for [y (range 0 rows)
          x (range 0 cols)]
-     (let [[x' y'] [(gridx->svgx side-key x) (gridy->svgy y)]
-           n (nth content (+ x (* 10 y)))
-           dx (if (< n 10) -3.5 (if (< n 100) -6.5 -10.5))
-           dy 4.5]
-       [:g {:key [x y]
-            :transform (str "translate(" x' "," y' ")")}
-        [:circle {:cx 0
-                  :cy 0
-                  :r dot-radius
-                  :fill (nth-fill n)
-                  :key "lc"
-                  }]
-        [:text {:x dx
-                :y dy
-                :fill "#ffffff"
-                :font-size 12
-                :key :lt}
-         (cell-content content x y)]]))])
+     (-> (cell side-key content x y xy-fill)
+         (r/with-key [x y])))])
 
 (r/defc left-grid [lefts]
   (grid
    :left lefts
    "rgba(255,100,100,0.3)"
    -0.5
-   (constantly "rgba(255,100,130,1)")))
+   (fn [x y] (dot-fill :left lefts x y))))
 
 (r/defc right-grid [rights]
   (grid
    :right rights
-   "rgba(100,100,255,0.2)"
+   "rgba(100,170,100,0.2)"
    10
-   (fn [n] (if n "rgb(73, 134, 255, 1)" "rgba(160,160,255,0.5)"))
-   ))
+   (fn [x y] (dot-fill :right rights x y))))
 
 ;;;
 ;; gestures
@@ -223,7 +294,7 @@
       )
     (reset! drag-line nil)))
 
-(r/defc svg-panel < r/reactive []
+(r/defc svg-panel []
   [:svg {:view-box (str "0 0 " viewport-width " " viewport-height)
          :height "100%"
          :width "100%"
@@ -235,9 +306,10 @@
          :on-touch-move drag-move
          :on-touch-end drag-stop
          }
-   [:g
-    (left-grid (:lefts (r/react game)))
-    (right-grid (:rights (r/react game)))]
+   (let [g @game]
+     [:g
+      (r/with-key (left-grid (:lefts g)) "left")
+      (r/with-key (right-grid (:rights g)) "right")])
    ])
 
 (r/defc debug < r/reactive []
@@ -253,14 +325,14 @@
   [:div {:class "panel panel-default" :style {:margin "2px"}}
    [:div {:class "panel-heading"}
     [:h3 {:class "panel-title"} "Factors and Multiples"
-     [:span {:style {:float "right"}} "Longest Chain 20"]]]
+     [:span {:style {:float "right"}}
+      "Longest Chain "
+      (str (longest-chain (:rights (r/react game))))]]]
    [:div {:class "panel-body"}
-    [:p "Click on a number or drag it into the right hand grid where you can continue to reorder them.
-Try to make the longest possible chain where each number is a factor or a multiple of its predecessor.
-Each number may be used once only.
-Any valid chain is coloured green."]
+    [:p "Click on a number to move it between the left and right squares. Numbers in the right grid can be dragged to reorder them.
+Aim to make the longest possible chain where each number is a factor or a multiple of its predecessor. Each number may be used once only. Valid chains are coloured green. The first number in a chain is dark green."]
     (svg-panel)
-    (debug)]])
+    #_(debug)]])
 
 
 ;;;
