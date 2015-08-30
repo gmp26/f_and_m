@@ -174,7 +174,8 @@
   [[side [x y] :as start] [side' [x' y'] :as end]]
   (when (and start end)
     (prn (str "commit drag " side " " [x y] " -> " side' " " [x' y']))
-    (when (= side side' :rights)
+    (cond
+      (= side side' :rights)
       (let [content (side @game)
             source-index (xy->index x y)
             source-number (nth content source-index)
@@ -189,13 +190,26 @@
                              (assoc-in [:rights source-index] nil)))
             (swap! game #(-> %
                              (assoc-in [:rights target-index] source-number)
-                             (assoc-in [:rights source-index] nil)))
-            )
+                             (assoc-in [:rights source-index] nil))))))
 
-          )
-        )
-      ))
-  )
+      (and (= side :lefts) (= side' :rights))
+      (let [content (side @game)
+            content' (side' @game)
+            source-index (xy->index x y)
+            source-number (nth content source-index)
+            target-index (xy->index x' y')
+            target-number (nth content' target-index)
+            ]
+       (when source-number
+          (if target-number
+            (swap! game #(-> %
+                             (assoc-in [:rights (first (available-rights))] target-number)
+                             (assoc-in [:rights target-index] source-number)
+                             (assoc-in [:lefts source-index] nil)))
+            (swap! game #(-> %
+                             (assoc-in [:rights target-index] source-number)
+                             (assoc-in [:lefts source-index] nil)))))))))
+
 
 ;;;;;;;;;
 
