@@ -41,6 +41,9 @@
     :rights (* (+ x cols 1) dot-radius 2)))
 (defn gridy->svgy [y] (* (+ y 0.5) dot-radius 2))
 
+(defn grid->svg [side [x y]]
+  [(gridx->svgx side x) (gridy->svgy y)])
+
 (defn svgx->gridx [x]
   (let [x' (/ x 2 dot-radius)]
     (if (<= x' 10)
@@ -82,10 +85,21 @@
       [side [x' y']]
       nil)))
 
+(defn grid->nearest-dot
+  "game coords to dot coords. Return nil if not on a dot"
+  [[side [x y]]]
+  (let [[x' y'] [(.round js/Math x) (.round js/Math y)]]
+    [side [x' y']]))
+
 (defn mouse->dot
   "find dot under mouse/touch point, Return nil if not on a dot"
   [svg-el event]
   (grid->dot (svg->grid (sve/mouse->svg svg-el event))))
+
+(defn mouse->nearest-dot
+  "find dot under mouse/touch point, Return nil if not on a dot"
+  [svg-el event]
+  (grid->nearest-dot (svg->grid (sve/mouse->svg svg-el event))))
 
 ;;;
 ;; painting
@@ -220,6 +234,11 @@
   [(if (< number 10) -3.5 (if (< number 100) -6.5 -10.5)) 4.5]
 )
 
+(r/defc render-line < r/static [[x y] [x' y']]
+  [:line {:x1 x :y1 y :x2 x' :y2 y'
+          :stroke "black" :stroke-width 5 :stroke-linecap "round"
+          :opacity 0.3}])
+
 (r/defc render-number < r/static [number x' y' dx dy fill]
   [:g {:style {:cursor "pointer"}}
          [:circle {:cx x'
@@ -242,7 +261,10 @@
             number (nth (side @game) (xy->index x y))
             [dx dy] (dxdy number)]
         #_(prn (str "dl " drag-line " side " side " xy " x "," y))
-        (render-number number x' y' dx dy (get-in dot-fills [:rights :present]))
+        [:g
+         (render-number number x' y' dx dy (get-in dot-fills [:rights :present]))
+         (render-line (grid->svg side [x y]) [x' y'])]
+
         ))))
 
 (r/defc cell < r/cursored r/cursored-watch [game side-key x y]
@@ -332,15 +354,16 @@
         end-dot [side end-xy]
         [start-dot [_ last-xy] started-at :as dl] (:drag-line @game)]
 
-    (when (and dl (> (sq-dist last-xy end-xy) 9))
-      (swap! game assoc :drag-line [start-dot end-dot started-at]))))
+    (when (and dl (> (sq-dist last-xy end-xy) 1))
+      (swap! game assoc
+             :drag-line [start-dot end-dot started-at]))))
 
 (defn drag-stop
   "handle end of drag. Convert to a tap if not moved"
   [event]
   (.preventDefault event)
   (let [
-        end-dot (mouse->dot (el "svg") event)
+        end-dot (mouse->nearest-dot (el "svg") event)
         [start-dot _ started-at] (:drag-line @game)
         now (.now js/Date)
         ]
