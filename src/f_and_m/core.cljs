@@ -1,13 +1,8 @@
 (ns ^:figwheel-always f_and_m.core
     (:require [rum :as r]
-              [cljs.reader :as reader]
-              [clojure.set :refer (intersection)]
               [cljsjs.react]
               [f-and-m.svg-event :as sve]
-              [jayq.core :refer ($)]
-              )
-    (:require-macros [jayq.macros :refer [ready]])
-  )
+              ))
 
 (enable-console-print!)
 
@@ -25,6 +20,17 @@
 (def gap 20)
 (def dot-radius 10)
 (def click-interval 1000)
+
+;;;
+;; utils
+;;;
+(defn sq [x] (* x x))
+
+(defn sq-dist
+  "square distance between points"
+  [[x1 y1] [x2 y2]]
+  (sq (+ (- x1 x2) (- y1 y2)))
+  )
 
 ;;;
 ;; unit conversions
@@ -68,8 +74,6 @@
 ;;;
 ;; game transforms
 ;;;
-(defn sq [x] (* x x))
-
 (defn grid->dot
   "game coords to dot coords. Return nil if not on a dot"
   [[side [x y]]]
@@ -319,12 +323,6 @@
       (swap! game assoc :drag-line [dot dot (.now js/Date)])))
   )
 
-(defn sq-dist
-  "square distance between points"
-  [[x1 y1] [x2 y2]]
-  (sq (+ (- x1 x2) (- y1 y2)))
-  )
-
 (defn drag-move
   "continue dragging a dot"
   [event]
@@ -332,7 +330,7 @@
   (let [[x y :as end-xy] (sve/mouse->svg (el "svg") event)
         [side _] (svgx->gridx x)
         end-dot [side end-xy]
-        [start-dot [s last-xy] started-at :as dl] (:drag-line @game)]
+        [start-dot [_ last-xy] started-at :as dl] (:drag-line @game)]
 
     (when (and dl (> (sq-dist last-xy end-xy) 9))
       (swap! game assoc :drag-line [start-dot end-dot started-at]))))
@@ -367,11 +365,9 @@
    [:g
     (r/with-key (left-grid @(r/cursor game [:lefts])) "left")
     (r/with-key (right-grid @(r/cursor game [:rights])) "right")
-    (r/with-key (dragged-cell game) "dragged")
-    #_(when @(r/cursor game [:drag-line])
-        (r/with-key (dragged-cell game) "dragged"))]
-   ])
-
+    (when-let [[dl1 dl2] @(r/cursor game [:drag-line])]
+      (when (not= dl1 dl2)
+        (r/with-key (dragged-cell game) "dragged")))]])
 
 (r/defc debug < r/reactive []
   (let [g (r/react game)]
@@ -398,7 +394,7 @@ Each number may be used once only.
 Valid chains are coloured green.
 The first number in a chain is dark green."]
     (svg-panel game)
-    #_(debug)]])
+    (debug)]])
 
 
 ;;;
