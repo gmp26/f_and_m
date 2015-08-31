@@ -211,9 +211,6 @@
                              (assoc-in [:rights target-index] source-number)
                              (assoc-in [:lefts source-index] nil)))))))))
 
-
-;;;;;;;;;
-
 (defn dxdy
   [number]
   [(if (< number 10) -3.5 (if (< number 100) -6.5 -10.5)) 4.5]
@@ -222,9 +219,10 @@
 (r/defc dragged-cell < r/cursored r/cursored-watch [game]
   (let [drag-line @(r/cursor game [:drag-line]) ]
     (when drag-line
-      (let [[[[side [x y]] [side' [x' y']] t]] drag-line
+      (let [[[side [x y]] [side' [x' y']] t] drag-line
             number (nth (side @game) (xy->index x y))
             [dx dy] (dxdy number)]
+        (prn (str "dl " drag-line " side " side " xy " x "," y))
         [:g {:transform (str "translate(" x' "," y' ")")}
          [:circle {:cx 0
                    :cy 0
@@ -302,6 +300,11 @@
 ;; gestures
 ;;;
 
+;;
+;; todo: fix: drag-line start uses grid coords, but drag-line end uses
+;;
+;;
+
 (defn drag-start
   "start dragging a dot"
   [event]
@@ -309,19 +312,26 @@
   (let [g @game]
     (let [dot (mouse->dot (el "svg") event)]
       #_(prn (str "drag-start " dot))
-      (swap! game assoc :drag-line [[dot dot] (.now js/Date)])))
+      (swap! game assoc :drag-line [dot dot (.now js/Date)])))
+  )
+
+(defn sq-dist
+  "square distance between points"
+  [[x1 y1] [x2 y2]]
+  (sq (+ (- x1 x2) (- y1 y2)))
   )
 
 (defn drag-move
   "continue dragging a dot"
   [event]
   (.preventDefault event)
-  (let [[x y] (sve/mouse->svg (el "svg") event)
+  (let [[x y :as end-xy] (sve/mouse->svg (el "svg") event)
         [side _] (svgx->gridx x)
-        end-dot [side [x y]]
-        [[start-dot _ :as dl] started-at] (:drag-line @game)]
-    (when dl
-      (swap! game assoc :drag-line [[start-dot end-dot] started-at]))))
+        end-dot [side end-xy]
+        [start-dot [s last-xy] started-at :as dl] (:drag-line @game)]
+
+    (when (and dl (> (sq-dist last-xy end-xy) 2))
+      (swap! game assoc :drag-line [start-dot end-dot started-at]))))
 
 (defn drag-stop
   "handle end of drag. Convert to a tap if not moved"
@@ -329,7 +339,7 @@
   (.preventDefault event)
   (let [
         end-dot (mouse->dot (el "svg") event)
-        [[start-dot _] started-at] (:drag-line @game)
+        [start-dot _ started-at] (:drag-line @game)
         now (.now js/Date)
         ]
     (if (and (= start-dot end-dot) (< (- now started-at) click-interval))
