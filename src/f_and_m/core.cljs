@@ -174,7 +174,7 @@
   "commit a drag"
   [[side [x y] :as start] [side' [x' y'] :as end]]
   (when (and start end)
-    (prn (str "commit drag " side " " [x y] " -> " side' " " [x' y']))
+    #_(prn (str "commit drag " side " " [x y] " -> " side' " " [x' y']))
     (cond
       (= side side' :rights)
       (let [content (side @game)
@@ -216,26 +216,30 @@
   [(if (< number 10) -3.5 (if (< number 100) -6.5 -10.5)) 4.5]
 )
 
+(r/defc render-number < r/static [number x' y' dx dy fill]
+  [:g {:style {:cursor "pointer"}}
+         [:circle {:cx x'
+                      :cy y'
+                      :r dot-radius
+                      :fill fill
+                      :key :lc
+                      }]
+         [:text {:x (+ x' dx)
+                 :y (+ y' dy)
+                 :fill "#ffffff"
+                 :font-size 12
+                 :key :lt}
+          number]])
+
 (r/defc dragged-cell < r/cursored r/cursored-watch [game]
   (let [drag-line @(r/cursor game [:drag-line]) ]
     (when drag-line
       (let [[[side [x y]] [side' [x' y']] t] drag-line
             number (nth (side @game) (xy->index x y))
             [dx dy] (dxdy number)]
-        (prn (str "dl " drag-line " side " side " xy " x "," y))
-        [:g {:transform (str "translate(" x' "," y' ")")}
-         [:circle {:cx 0
-                   :cy 0
-                   :r dot-radius
-                   :fill (get-in dot-fills [:rights :present])
-                   :key :lc
-                   }]
-         [:text {:x dx
-                 :y dy
-                 :fill "#ffffff"
-                 :font-size 12
-                 :key :lt}
-          number]]))))
+        #_(prn (str "dl " drag-line " side " side " xy " x "," y))
+        (render-number number x' y' dx dy (get-in dot-fills [:rights :present]))
+        ))))
 
 (r/defc cell < r/cursored r/cursored-watch [game side-key x y]
   (let [[x' y'] [(gridx->svgx side-key x) (gridy->svgy y)]
@@ -252,8 +256,8 @@
                        (get-in dot-fills [side-key :chained]))
                      (get-in dot-fills [side-key :present])))
             ]
-
-        [:g {:key [x y]
+        (render-number number x' y' dx dy fill)
+        #_[:g {:key [x y]
              :transform (str "translate(" x' "," y' ")")}
          [:circle {:cx 0
                    :cy 0
@@ -269,7 +273,7 @@
           number]]))))
 
 
-(r/defc grid
+(r/defc grid < r/static
   [side-key background-fill x0]
   [:g {:style {:cursor "pointer"}}
    [:rect {:x (gridy->svgy x0)
@@ -330,7 +334,7 @@
         end-dot [side end-xy]
         [start-dot [s last-xy] started-at :as dl] (:drag-line @game)]
 
-    (when (and dl (> (sq-dist last-xy end-xy) 2))
+    (when (and dl (> (sq-dist last-xy end-xy) 9))
       (swap! game assoc :drag-line [start-dot end-dot started-at]))))
 
 (defn drag-stop
@@ -360,13 +364,12 @@
          :on-touch-move drag-move
          :on-touch-end drag-stop
          }
-   (let [g @game]
-     [:g
-      (r/with-key (left-grid @(r/cursor game [:lefts])) "left")
-      (r/with-key (right-grid @(r/cursor game [:rights])) "right")
-      #_(r/with-key (dragged-cell game) "dragged")
-      (when @(r/cursor game [:drag-line])
-        (r/with-key (dragged-cell game) "dragged"))])
+   [:g
+    (r/with-key (left-grid @(r/cursor game [:lefts])) "left")
+    (r/with-key (right-grid @(r/cursor game [:rights])) "right")
+    (r/with-key (dragged-cell game) "dragged")
+    #_(when @(r/cursor game [:drag-line])
+        (r/with-key (dragged-cell game) "dragged"))]
    ])
 
 
