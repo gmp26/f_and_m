@@ -131,7 +131,7 @@
   "find the length of a f_or_m chain from given index"
   [[longest len m] n]
   #_(prn (str "longest " longest " len " len " m " m " n " n))
-  (if (f-or-m? m n) [(max longest (inc len)) (inc len) n] [longest 0 n]))
+  (if (f-or-m? m n) [(max longest (inc len)) (inc len) n] [longest 1 n]))
 
 (defn longest-chain
   "calculate the length of the longest f-or-m chain"
@@ -288,13 +288,13 @@
      (-> (cell game side-key x y)
          (r/with-key [x y])))])
 
-(r/defc left-grid [lefts]
+(r/defc left-grid < r/static [lefts]
   (grid
    :lefts
    "rgba(255,100,100,0.3)"
    -0.5))
 
-(r/defc right-grid [rights]
+(r/defc right-grid < r/static [rights]
   (grid
    :rights
    "rgba(100,170,100,0.2)"
@@ -383,7 +383,7 @@
 ;;;
 ;; Put the app/game in here
 ;;;
-(r/defc game-container < r/reactive [game]
+(r/defc game-container < r/cursored r/cursored-watch [game]
   [:div {:class "panel panel-default" :style {:margin "2px"}}
    [:div {:class "panel-heading"}
     [:h3 {:class "panel-title"} "Factors and Multiples"
