@@ -60,7 +60,8 @@
 ;;;
 (defonce game (atom {:title "Factors and Mulitples Game"
                      :lefts initial-lefts
-                     :rights initial-rights}))
+                     :rights initial-rights
+                     :drag-line nil}))
 
 (defn el [id] (.getElementById js/document id))
 
@@ -185,9 +186,9 @@
         (when source-number
           (if target-number
             (swap! game #(-> %
-                             (assoc-in [:rights (first (available-rights))] target-number)
+                             #_(assoc-in [:rights (first (available-rights))] target-number)
                              (assoc-in [:rights target-index] source-number)
-                             (assoc-in [:rights source-index] nil)))
+                             (assoc-in [:rights source-index] target-number)))
             (swap! game #(-> %
                              (assoc-in [:rights target-index] source-number)
                              (assoc-in [:rights source-index] nil))))))
@@ -213,6 +214,30 @@
 
 ;;;;;;;;;
 
+(defn dxdy
+  [number]
+  [(if (< number 10) -3.5 (if (< number 100) -6.5 -10.5)) 4.5]
+)
+
+(r/defc dragged-cell < r/cursored r/cursored-watch [game]
+  (let [drag-line @(r/cursor game [:drag-line]) ]
+    (when drag-line
+      (let [[[[side [x y]] [side' [x' y']] t]] drag-line
+            number (nth (side @game) (xy->index x y))
+            [dx dy] (dxdy number)]
+        [:g {:transform (str "translate(" x' "," y' ")")}
+         [:circle {:cx 0
+                   :cy 0
+                   :r dot-radius
+                   :fill (get-in dot-fills [:rights :present])
+                   :key :lc
+                   }]
+         [:text {:x dx
+                 :y dy
+                 :fill "#ffffff"
+                 :font-size 12
+                 :key :lt}
+          number]]))))
 
 (r/defc cell < r/cursored r/cursored-watch [game side-key x y]
   (let [[x' y'] [(gridx->svgx side-key x) (gridy->svgy y)]
@@ -220,8 +245,7 @@
         number @(r/cursor game [side-key index])]
     (if number
       (let [content @(r/cursor game [side-key])
-            dx (if (< number 10) -3.5 (if (< number 100) -6.5 -10.5))
-            dy 4.5
+            [dx dy] (dxdy number)
             fill (if (= side-key :lefts)
                    (get-in dot-fills [side-key :present])
                    (if (chained? content index)
@@ -277,7 +301,6 @@
 ;;;
 ;; gestures
 ;;;
-(def drag-line (atom nil))
 
 (defn drag-start
   "start dragging a dot"
@@ -286,17 +309,19 @@
   (let [g @game]
     (let [dot (mouse->dot (el "svg") event)]
       #_(prn (str "drag-start " dot))
-      (reset! drag-line [[dot dot] (.now js/Date)])))
+      (swap! game assoc :drag-line [[dot dot] (.now js/Date)])))
   )
 
 (defn drag-move
   "continue dragging a dot"
   [event]
   (.preventDefault event)
-  (let [end-dot (mouse->dot (el "svg") event)
-        [[start-dot _ :as dl] started-at] @drag-line]
+  (let [[x y] (sve/mouse->svg (el "svg") event)
+        [side _] (svgx->gridx x)
+        end-dot [side [x y]]
+        [[start-dot _ :as dl] started-at] (:drag-line @game)]
     (when dl
-      (reset! drag-line [[start-dot end-dot] started-at]))))
+      (swap! game assoc :drag-line [[start-dot end-dot] started-at]))))
 
 (defn drag-stop
   "handle end of drag. Convert to a tap if not moved"
@@ -304,16 +329,16 @@
   (.preventDefault event)
   (let [
         end-dot (mouse->dot (el "svg") event)
-        [[start-dot _] started-at] @drag-line
+        [[start-dot _] started-at] (:drag-line @game)
         now (.now js/Date)
         ]
     (if (and (= start-dot end-dot) (< (- now started-at) click-interval))
       (click-on end-dot)
       (commit-drag start-dot end-dot)
       )
-    (reset! drag-line nil)))
+    (swap! game assoc :drag-line nil)))
 
-(r/defc svg-panel []
+(r/defc svg-panel < r/cursored r/cursored-watch [game]
   [:svg {:view-box (str "0 0 " viewport-width " " viewport-height)
          :height "100%"
          :width "100%"
@@ -327,8 +352,11 @@
          }
    (let [g @game]
      [:g
-      (r/with-key (left-grid (:lefts g)) "left")
-      (r/with-key (right-grid (:rights g)) "right")])
+      (r/with-key (left-grid @(r/cursor game [:lefts])) "left")
+      (r/with-key (right-grid @(r/cursor game [:rights])) "right")
+      #_(r/with-key (dragged-cell game) "dragged")
+      (when @(r/cursor game [:drag-line])
+        (r/with-key (dragged-cell game) "dragged"))])
    ])
 
 
@@ -336,7 +364,8 @@
   (let [g (r/react game)]
     [:div
      [:p {:key 1} (str "lefts " (:lefts g))]
-     [:p {:key 2} (str "rights " (:rights g))]]))
+     [:p {:key 2} (str "rights " (:rights g))]
+     [:p {:key 3} (str "drag-line " (:drag-line g))]]))
 
 ;;;
 ;; Put the app/game in here
@@ -355,8 +384,8 @@ Aim to make the longest possible chain where each number is a factor or a multip
 Each number may be used once only.
 Valid chains are coloured green.
 The first number in a chain is dark green."]
-    (svg-panel)
-    (debug)]])
+    (svg-panel game)
+    #_(debug)]])
 
 
 ;;;
