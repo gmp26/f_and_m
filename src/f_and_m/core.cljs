@@ -262,8 +262,12 @@
             [dx dy] (dxdy number)]
         #_(prn (str "dl " drag-line " side " side " xy " x "," y))
         [:g
-         (render-number number x' y' dx dy (get-in dot-fills [:rights :present]))
-         (render-line (grid->svg side [x y]) [x' y'])]
+         (r/with-key
+           (render-number number x' y' dx dy (get-in dot-fills [:rights :present]))
+           :dcn)
+         (r/with-key
+           (render-line (grid->svg side [x y]) [x' y'])
+           :dcl)]
 
         ))))
 
@@ -282,22 +286,7 @@
                        (get-in dot-fills [side-key :chained]))
                      (get-in dot-fills [side-key :present])))
             ]
-        (render-number number x' y' dx dy fill)
-        #_[:g {:key [x y]
-             :transform (str "translate(" x' "," y' ")")}
-         [:circle {:cx 0
-                   :cy 0
-                   :r dot-radius
-                   :fill fill
-                   :key :lc
-                   }]
-         [:text {:x dx
-                 :y dy
-                 :fill "#ffffff"
-                 :font-size 12
-                 :key :lt}
-          number]]))))
-
+        (render-number number x' y' dx dy fill)))))
 
 (r/defc grid < r/static
   [side-key background-fill x0]
@@ -333,7 +322,6 @@
 ;;
 ;; todo: fix: drag-line start uses grid coords, but drag-line end uses
 ;;
-;;
 
 (defn drag-start
   "start dragging a dot"
@@ -342,8 +330,7 @@
   (let [g @game]
     (let [dot (mouse->dot (el "svg") event)]
       #_(prn (str "drag-start " dot))
-      (swap! game assoc :drag-line [dot dot (.now js/Date)])))
-  )
+      (swap! game assoc :drag-line [dot dot (.now js/Date)]))))
 
 (defn drag-move
   "continue dragging a dot"
@@ -362,15 +349,20 @@
   "handle end of drag. Convert to a tap if not moved"
   [event]
   (.preventDefault event)
-  (let [
-        end-dot (mouse->nearest-dot (el "svg") event)
+  (let [[side [x y] :as end-dot] (mouse->nearest-dot (el "svg") event)
         [start-dot _ started-at] (:drag-line @game)
-        now (.now js/Date)
-        ]
-    (if (and (= start-dot end-dot) (< (- now started-at) click-interval))
-      (click-on end-dot)
-      (commit-drag start-dot end-dot)
-      )
+        now (.now js/Date)]
+
+    (when (and (>= x 0) (< x grid-size ) (>= y 0) (< y grid-size))
+      (cond
+        (and (= start-dot end-dot) (< (- now started-at) click-interval))
+        (click-on end-dot)
+
+        (= side :lefts)
+        (click-on start-dot)
+
+        :else
+        (commit-drag start-dot end-dot)))
     (swap! game assoc :drag-line nil)))
 
 (r/defc svg-panel < r/cursored r/cursored-watch [game]
@@ -383,8 +375,7 @@
          :on-mouse-up drag-stop
          :on-touch-start drag-start
          :on-touch-move drag-move
-         :on-touch-end drag-stop
-         }
+         :on-touch-end drag-stop}
    [:g
     (r/with-key (left-grid @(r/cursor game [:lefts])) "left")
     (r/with-key (right-grid @(r/cursor game [:rights])) "right")
@@ -417,14 +408,12 @@ Each number may be used once only.
 Valid chains are coloured green.
 The first number in a chain is dark green."]
     (svg-panel game)
-    (debug)]])
-
+    #_(debug)]])
 
 ;;;
 ;; mount main component on html game element
 ;;;
 (r/mount (game-container game) (el "game"))
-
 
 ;;
 ;; optionally do something on game reload
