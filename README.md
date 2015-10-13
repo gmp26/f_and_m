@@ -1,10 +1,11 @@
 # f_and_m
 
-FIXME: Write a one-line description of your library/project.
+Source code for NRICH factors and multiples animation
 
 ## Overview
 
-FIXME: Write a paragraph about the library/project and highlight its goals.
+A challenge where you must find the longest possible chain of factors following multiples or multiples following
+factors using the numbers from 1 to 100 at most once.
 
 ## Setup
 
@@ -34,6 +35,6 @@ get live reloading, nor a REPL.
 
 ## License
 
-Copyright © 2014 FIXME
+Copyright © University of Cambridge (gmp26)
 
 Distributed under the Eclipse Public License either version 1.0 or (at your option) any later version.
