@@ -62,7 +62,7 @@
     [side [x' y']]))
 
 (def viewport-width (gridx->svgx :rights (+ cols 0.5)))
-(def viewport-height (gridy->svgy (+ rows 0.5)))
+(def viewport-height (gridy->svgy (- rows 0.5)))
 
 ;;;
 ;; define game state once so it doesn't re-initialise on reload
@@ -424,16 +424,37 @@
      [:p {:key 2} (str "rights " (:rights g))]
      [:p {:key 3} (str "drag-line " (:drag-line g))]]))
 
+
+(defn reset [event]
+  (.preventDefault (.-nativeEvent event))
+  (swap! game #(assoc % :lefts initial-lefts
+                      :rights initial-rights))
+  )
+
+(r/defc reset-button < r/reactive []
+  (if (some some? (:rights (r/react game)))
+    [:button.btn.btn-primary
+     {:on-mouse-up reset
+      :on-touch-end reset} "Start again"]
+    [:div {:style {:display "inline-block" :height "20px"}}]
+    )
+  )
+
+
+
 ;;;
 ;; Put the app/game in here
 ;;;
 (r/defc game-container < r/cursored r/cursored-watch [game]
   [:div {:class "panel panel-default" :style {:margin "2px"}}
-   [:div {:class "panel-heading"}
-    [:h3 {:class "panel-title"} "Factors and Multiples"
-     [:span {:style {:float "right"}}
+   [:div{:class "panel-heading"}
+    [:h3.clearfix {:class "panel-title"}
+     [:.pull-left {:style {:height "26px" :margin-top "6px"}} "Factors and Multiples "]
+     [:span.pull-right {:style {:height "26px" :margin-top "0px"}}
       "Longest Chain "
-      (str (longest-chain @(r/cursor game [:rights])))]]]
+      (str (longest-chain @(r/cursor game [:rights])) "  ")
+      (reset-button)
+      ]]]
    [:div {:class "panel-body"}
     [:p "Click on a number to move it between the left and right squares.
 Numbers in the right grid can be dragged to reorder them.
@@ -442,7 +463,7 @@ Each number may be used once only.
 Valid chains are coloured green.
 The first number in a chain is outlined."]
     (svg-panel game)
-    (debug)]])
+    ]])
 
 ;;;
 ;; mount main component on html game element
