@@ -116,7 +116,7 @@
                        :absent "rgba(255,100,100,0)";"rgba(160,170,200,1)"
                        :active  "rgba(255,100,130,1)"}
                 :rights {:present "rgba(59, 83, 254, 1)" ;"rgba(255,100,130,1)";"#3B53FE" ;
-                        :chain-start "rgba(70,170,40,1)"
+                        :chain-start "rgba(65, 150, 124, 1)"
                         :chained "rgba(80,180,80,1)"
                         :absent "rgba(160,160,255,0)"
                         :displaced "rgba(255,100,130,0.7)"}})
@@ -196,21 +196,20 @@
         rights' (vec (concat (subvec rights 0 source-index)
                              left-shift
                              (subvec rights (+ source-index (inc (count left-shift))))))
-        foo (prn "left-shifted" rights' (count rights'))
-        target-index' (if (> target-index source-index) (dec target-index) target-index)
-        right-shift (to-shift rights' target-index')
-        foo'' (prn :start (subvec rights' 0 target-index'))
-        foo''' (prn :sn [source-number])
-        foo' (prn "right-shift" right-shift)
-        foo'''' (prn "5 to end" (take 5 (subvec rights' (+ target-index' (count right-shift)))))
-        result (vec (concat (subvec rights' 0 target-index')
+        right-shift (to-shift rights' target-index)]
+    (vec (concat (subvec rights' 0 target-index)
                             [source-number]
                             right-shift
-                            (subvec rights' (+ target-index' (count right-shift)))))]
-    (prn :count  (count result))
-    result))
+                            (subvec rights' (+ target-index (count right-shift)))))))
 
-
+(defn insert-left-before-target-chain
+  [source-number target-index]
+  (let [rights (:rights @game)
+        right-shift (to-shift rights target-index)]
+    (vec (concat (subvec rights 0 target-index)
+                 [source-number]
+                 right-shift
+                 (subvec rights (+ target-index (count right-shift)))))))
 
 (defn commit-drag
   "commit a drag"
@@ -223,19 +222,14 @@
             source-index (xy->index x y)
             source-number (nth content source-index)
             target-index (xy->index x' y')
+            ;target-index (if (> target-index' source-index) (inc target-index') target-index')
             target-number (nth content target-index)
             ]
-        (prn source-index source-number target-index target-number)
+        #_(prn source-index source-number target-index target-number)
 
-        (swap! game #(assoc % :rights (insert-before-target-chain source-index target-index)))
-
-
-        #_(when source-number
+        (when source-number
           (if target-number
-            (swap! game #(-> %
-                             #_(assoc-in [:rights (first (available-rights))] target-number)
-                             (assoc-in [:rights target-index] source-number)
-                             (assoc-in [:rights source-index] target-number)))
+            (swap! game #(assoc % :rights (insert-before-target-chain source-index target-index)))
             (swap! game #(-> %
                              (assoc-in [:rights target-index] source-number)
                              (assoc-in [:rights source-index] nil))))))
@@ -249,8 +243,13 @@
             target-number (nth content' target-index)
             ]
        (when source-number
-          (if target-number
-            (swap! game #(-> %
+         (if target-number
+           (do
+             (prn source-number target-number)
+             (swap! game #(assoc % :rights (insert-left-before-target-chain source-number target-index)))
+             (swap! game #(assoc-in % [:lefts source-index] nil))
+             )
+           #_(swap! game #(-> %
                              (assoc-in [:rights (first (available-rights))] target-number)
                              (assoc-in [:rights target-index] source-number)
                              (assoc-in [:lefts source-index] nil)))
@@ -261,7 +260,7 @@
 (defn dxdy
   [number]
   [(if (< number 10) -3.5 (if (< number 100) -6.5 -10.5)) 4.5]
-)
+  )
 
 (r/defc render-line < r/static [[x y] [x' y']]
   [:line {:x1 x :y1 y :x2 x' :y2 y'
@@ -440,9 +439,9 @@ Numbers in the right grid can be dragged to reorder them.
 Aim to make the longest possible chain where each number is a factor or a multiple of its predecessor.
 Each number may be used once only.
 Valid chains are coloured green.
-The first number in a chain is outlined."]
+The first number in a chain is outlined and darker."]
     (svg-panel game)
-    (debug)]])
+    #_(debug)]])
 
 ;;;
 ;; mount main component on html game element
