@@ -29,7 +29,8 @@
              {:id "min"
               :source-paths ["src"]
               :compiler {:output-to "resources/public/js/compiled/f_and_m.js"
-                         :externs ["resources/externs/svg.js"]
+                         :externs ["resources/externs/svg.js"
+                                   "resources/externs/botstrap.ext.js"]
                          :main f_and_m.core
                          :asset-path "js/compiled/prod"
                          :output-dir "resources/public/js/compiled/prod"

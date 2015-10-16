@@ -66,7 +66,7 @@
 
 ;;;
 ;; define game state once so it doesn't re-initialise on reload
-;;;
+;;;e
 (defonce game (atom {:title "Factors and Mulitples Game"
                      :lefts initial-lefts
                      :rights initial-rights
@@ -144,6 +144,15 @@
         next (when (< index (dec max-n)) (nth content (inc index)))]
     (and (or (not  prior) (not (f-or-m? prior number)))
         (and next (f-or-m? number next)))))
+
+(defn chain-end?
+  "last item of a chain?"
+  [content index]
+  (let [number (nth content index)
+        prior (when (> index 0) (nth content (- index 1)))
+        next (when (< index (dec max-n)) (nth content (inc index)))]
+    (and (or (not  next) (not (f-or-m? next number)))
+        (and prior (f-or-m? number prior)))))
 
 (defn chain-length
   "find the length of a f_or_m chain from given index"
@@ -245,14 +254,9 @@
        (when source-number
          (if target-number
            (do
-             (#_prn source-number target-number)
              (swap! game #(assoc % :rights (insert-left-before-target-chain source-number target-index)))
              (swap! game #(assoc-in % [:lefts source-index] nil))
              )
-           #_(swap! game #(-> %
-                             (assoc-in [:rights (first (available-rights))] target-number)
-                             (assoc-in [:rights target-index] source-number)
-                             (assoc-in [:lefts source-index] nil)))
             (swap! game #(-> %
                              (assoc-in [:rights target-index] source-number)
                              (assoc-in [:lefts source-index] nil)))))))))
@@ -267,14 +271,15 @@
           :stroke "black" :stroke-width 5 :stroke-linecap "round"
           :opacity 0.3}])
 
-(rum/defc render-number < rum/static [number x' y' dx dy fill stroke]
+(rum/defc render-number < rum/static [number x' y' dx dy fill start-chain end-chain]
   [:g {:style {:cursor "pointer"}}
          [:circle {:cx x'
                    :cy y'
                    :r (- dot-radius 1)
                    :fill fill
-                   :stroke (if stroke "black" fill)
+                   :stroke (if (or start-chain end-chain) "black" fill)
                    :stroke-width 1
+                   :stroke-dasharray (if start-chain "0,14,14" (if end-chain "14,28" ""))
                    :key :lc
                    }]
          [:text {:x (+ x' dx)
@@ -293,7 +298,7 @@
         #_(prn (str "dl " drag-line " side " side " xy " x "," y))
         [:g
          (rum/with-key
-           (render-number number x' y' dx dy (get-in dot-fills [:rights :present]) false)
+           (render-number number x' y' dx dy (get-in dot-fills [:rights :present]) false false)
            :dcn)
          (rum/with-key
            (render-line (grid->svg side [x y]) [x' y'])
@@ -304,22 +309,22 @@
 (rum/defc cell < rum/cursored rum/cursored-watch [game side-key x y]
   (let [[x' y'] [(gridx->svgx side-key x) (gridy->svgy y)]
         index (xy->index x y)
-        number @(rum/cursor game [side-key index])]
+        number @(rum/cursor game [side-key index])
+        ]
     (if number
       (let [content @(rum/cursor game [side-key])
             [dx dy] (dxdy number)
             fill (if (= side-key :lefts)
                    (get-in dot-fills [side-key :present])
                    (if (chained? content index)
-                     (if (chain-start? content index)
+                     (get-in dot-fills [side-key :chained])
+                     #_(if (chain-start? content index)
                        (get-in dot-fills [side-key :chain-start])
                        (get-in dot-fills [side-key :chained]))
                      (get-in dot-fills [side-key :present])))
-            stroke (and (= side-key :rights)
-                        (chained? content index)
-                        (chain-start? content index))
+            right (= side-key :rights)
             ]
-        (render-number number x' y' dx dy fill stroke)))))
+        (render-number number x' y' dx dy fill (and right (chain-start? content index)) (and right (chain-end? content index)))))))
 
 (rum/defc grid < rum/static
   [side-key background-fill x0]
@@ -400,6 +405,7 @@
 
 (rum/defc svg-panel < rum/cursored rum/cursored-watch [game]
   [:svg {:view-box (str "0 0 " viewport-width " " viewport-height)
+         :preserve-aspect-ratio "xMinYMin meet"
          :height "100%"
          :width "100%"
          :id "svg"
@@ -408,7 +414,8 @@
          :on-mouse-up drag-stop
          :on-touch-start drag-start
          :on-touch-move drag-move
-         :on-touch-end drag-stop}
+         :on-touch-end drag-stop
+         :style {:border "none !important"}}
    [:g
     (rum/with-key (left-grid @(rum/cursor game [:lefts])) "left")
     (rum/with-key (right-grid @(rum/cursor game [:rights])) "right")
@@ -443,7 +450,8 @@
 ;; Put the app/game in here
 ;;;
 (rum/defc game-container < rum/cursored rum/cursored-watch [game]
-  [:div {:class "panel panel-default" :style {:margin "2px"}}
+  [:div {:class "panel panel-default" :style {:margin "2px"                                       :border "none !important"
+}}
    [:div{:class "panel-heading"}
     [:h3.clearfix {:class "panel-title"}
      [:.pull-left {:style {:height "26px" :margin-top "6px"}} "Factors and Multiples "]
@@ -453,13 +461,13 @@
       (reset-button)
       ]
      ]]
-   [:div {:class "panel-body"}
+   [:div {:class "panel-body" :style {:height "800px"
+                                      }}
     [:p "Click on a number to move it between the left and right squares.
 Numbers in the right grid can be dragged to reorder them.
 Aim to make the longest possible chain where each number is a factor or a multiple of its predecessor.
 Each number may be used once only.
-Valid chains are coloured green.
-The first number in a chain is outlined and darker."]
+Chains are bracketed in green. Blue numbers are not part of a chain"]
     (svg-panel game)
     #_(debug)]])
 
