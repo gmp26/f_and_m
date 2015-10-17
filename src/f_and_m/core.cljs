@@ -432,7 +432,10 @@
 
 
 (defn reset [event]
-  (.preventDefault (.-nativeEvent event))
+  (prn "foo")
+  (.preventDefault event)
+  (.stopPropagation event)
+  (prn "fee")
   (swap! game #(assoc % :lefts initial-lefts
                       :rights initial-rights))
   )
@@ -470,6 +473,9 @@ Each number may be used once only.
 Chains are bracketed in green. Blue numbers are not part of a chain"]
     (svg-panel game)
     #_(debug)]])
+
+
+(.initializeTouchEvents js/React true)
 
 ;;;
 ;; mount main component on html game element
