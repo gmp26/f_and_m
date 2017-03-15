@@ -292,17 +292,18 @@
 (rum/defc dragged-cell < rum/cursored rum/cursored-watch [game]
   (let [drag-line @(rum/cursor game [:drag-line]) ]
     (when drag-line
-      (let [[[side [x y]] [side' [x' y']] t] drag-line
-            number (nth (side @game) (xy->index x y))
-            [dx dy] (dxdy number)]
-        #_(prn (str "dl " drag-line " side " side " xy " x "," y))
-        [:g
-         (rum/with-key
-           (render-number number x' y' dx dy (get-in dot-fills [:rights :present]) false false)
-           :dcn)
-         (rum/with-key
-           (render-line (grid->svg side [x y]) [x' y'])
-           :dcl)]
+      (let [[[side [x y]] [side' [x' y']] t] drag-line]
+        (when (and side x y)
+          (let [number (nth (side @game) (xy->index x y))
+                [dx dy] (dxdy number)]
+            #_(prn (str "dl " drag-line " side " side " xy " x "," y))
+            [:g
+             (rum/with-key
+               (render-number number x' y' dx dy (get-in dot-fills [:rights :present]) false false)
+               :dcn)
+             (rum/with-key
+               (render-line (grid->svg side [x y]) [x' y'])
+               :dcl)]))
 
         ))))
 
